@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>the monolith</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:none}
+  body.uion{cursor:default}
+  #pxOuter{position:fixed;inset:0;transform-origin:0 0;image-rendering:pixelated}
+  #pxInner{position:fixed;inset:0;transform-origin:0 0}
+  #bg{position:fixed;inset:0}
+  #screen{position:fixed;left:0;top:0;transform-origin:0 0;mix-blend-mode:multiply}
+  #screen iframe{width:100%;height:100%;border:0;background:transparent;pointer-events:none}
+  body.uion #screen iframe{pointer-events:auto}
+  #noise,#scan,#vig{position:fixed;inset:0;pointer-events:none}
+  #noise{mix-blend-mode:overlay;animation:nz .35s steps(2) infinite}
+  @keyframes nz{0%{background-position:0 0}50%{background-position:90px 40px}100%{background-position:-60px 80px}}
+  body.paused #noise{animation-play-state:paused}
+  #scan{mix-blend-mode:multiply;background:repeating-linear-gradient(0deg,#0000 0 2px,#0003 2px 3px)}
+  #vig{background:radial-gradient(ellipse at center,#0000 55%,#000 130%)}
+  #ui{position:fixed;top:12px;right:12px;display:flex;gap:8px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:9}
+  body.uion #ui{opacity:.55;pointer-events:auto}
+  #ui button{font:16px/1 system-ui;color:#fff;background:#ffffff2e;border:1px solid #ffffff40;border-radius:8px;padding:8px 10px;backdrop-filter:blur(4px);cursor:pointer}
+  #ui button:hover{background:#ffffff45}
+  #panel{position:fixed;top:52px;right:12px;width:270px;max-height:calc(100% - 70px);overflow:auto;background:#000000b8;border:1px solid #ffffff30;border-radius:10px;padding:12px;color:#ddd;font:12px system-ui;display:none;z-index:9;backdrop-filter:blur(6px)}
+  #panel.open{display:block}
+  #panel h3{margin:10px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#9ad}
+  #panel label{display:flex;justify-content:space-between;align-items:center;margin:5px 0;gap:8px}
+  #panel input[type=range]{flex:1}
+  #panel select,#panel textarea,#panel input[type=text]{width:100%;background:#111;color:#ddd;border:1px solid #444;border-radius:6px;font:12px system-ui}
+  #panel textarea{height:60px;resize:vertical}
+  #panel button{background:#234;color:#cde;border:1px solid #456;border-radius:6px;padding:5px 10px;cursor:pointer;margin-top:4px}
+  .val{width:34px;text-align:right;color:#8bf}
+  #err{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:#f55;font:14px monospace;text-align:center;display:none;z-index:99;background:#000a;padding:20px;border:1px solid #f55}
+</style>
+</head>
+<body>
+<div id="err"></div>
+<div id="pxOuter"><div id="pxInner">
+  <canvas id="bg"></canvas>
+  <div id="screen"><iframe id="game" allow="autoplay; fullscreen" allowfullscreen></iframe></div>
+</div></div>
+<div id="noise"></div><div id="scan"></div><div id="vig"></div>
+<div id="ui"><button id="bPause" title="pause">⏸</button><button id="bGear" title="settings">⚙</button></div>
+<div id="panel">
+  <h3>source</h3>
+  <textarea id="cfgPaste" placeholder='paste config.json or corners here (optional)'></textarea>
+  <input type="text" id="imgUrl" placeholder="image url (default scene.png)">
+  <button id="bApplySrc">apply source</button>
+  <button id="bRefresh">↻ refetch (api/config.json)</button>
+  <h3>screen / embed</h3>
+  <textarea id="embed" placeholder="paste a link or <iframe> embed to stand in for the game"></textarea>
+  <button id="bEmbed">load embed</button>
+  <label>blend <select id="blend"><option>multiply</option><option>overlay</option><option>normal</option><option>screen</option><option>soft-light</option></select></label>
+  <label>screen opacity <input type="range" id="scrOp" min="0" max="1" step=".05" value="1"><span class="val" id="vScrOp"></span></label>
+  <h3>filters</h3>
+  <label>pixelate <input type="range" id="pix" min="1" max="6" step="1" value="1"><span class="val" id="vPix"></span></label>
+  <label>noise <input type="range" id="noi" min="0" max=".5" step=".02" value=".12"><span class="val" id="vNoi"></span></label>
+  <label>posterize <input type="range" id="pos" min="0" max="8" step="1" value="0"><span class="val" id="vPos"></span></label>
+  <label>scanlines <input type="range" id="sca" min="0" max="1" step=".05" value=".25"><span class="val" id="vSca"></span></label>
+  <label>vignette <input type="range" id="vig2" min="0" max="1" step=".05" value=".35"><span class="val" id="vVig"></span></label>
+  <label>saturation <input type="range" id="sat" min="0" max="2" step=".05" value="1"><span class="val" id="vSat"></span></label>
+  <label>contrast <input type="range" id="con" min=".5" max="1.6" step=".05" value="1"><span class="val" id="vCon"></span></label>
+  <h3>more filters later</h3>
+  <div id="future" style="color:#667">reserved — tell me what you want here</div>
+</div>
+<svg width="0" height="0"><filter id="post"><feComponentTransfer id="fct"><feFuncR type="identity"/><feFuncG type="identity"/><feFuncB type="identity"/></feComponentTransfer></filter></svg>
+<script>
+'use strict';
+/* ============ AUTO-FETCH: paste your Apps Script web app /exec URL here ============ */
+const API_URL = 'https://script.google.com/macros/s/AKfycbyccUlKZq6VU6MFKCHDSUvyZG4XwfVyNe3FDo3S18iV9ejvBU7S55KHTAOa-LCcXALs/exec';
+
+/* ============ state ============ */
+let CFG = null, IMG = null, view = {s:1,ox:0,oy:0};
+const $ = id => document.getElementById(id);
+const bg = $('bg'), screen = $('screen'), game = $('game');
+
+function showError(msg){ const e=$('err'); e.textContent=msg; e.style.display='block'; }
+
+/* ============ config ============ */
+function parseCfg(text){
+  try { const j = JSON.parse(text); if (j.corners) return j; } catch(e){}
+  const m = text.match(/\[\s*\[[-\d.,\s\[\]]+\]\s*\]/);
+  if (m) try { return { corners: JSON.parse(m[0]) }; } catch(e){}
+  return null;
+}
+
+async function loadRemote(){
+  if (!API_URL) return false;
+  // Check for file protocol
+  if (location.protocol === 'file:') {
+    showError("Cannot fetch API from local file. Please host on GitHub Pages or run a local server (python -m http.server).");
+    return false;
+  }
+  try {
+    // Fetch JSON config (includes the direct lh3 image link)
+    const r = await fetch(API_URL); 
+    const j = await r.json();
+    if (j.error) { showError("API Error: " + j.error); return false; }
+    if (!j.corners || !j.image) { showError("API returned invalid data."); return false; }
+    
+    CFG = j;
+    // Load image directly from Google's CDN (bypasses Apps Script CORS issues)
+    loadImg(CFG.image, true);
+    return true;
+  } catch(e){ 
+    showError("Fetch failed: " + e.message + ". Check console.");
+    return false; 
+  }
+}
+
+async function loadConfig(){
+  if (await loadRemote()) return;
+  
+  // Fallback for local testing
+  if (location.protocol === 'file:') return; // Already showed error
+
+  try {
+    const r = await fetch('config.json'); 
+    if (r.ok) CFG = Object.assign({image:'scene.png'}, await r.json());
+  } catch(e){}
+  
+  if (!CFG) CFG = { image: 'scene.png' };
+  $('imgUrl').value = CFG.image || 'scene.png';
+  loadImg(CFG.image || 'scene.png', false);
+}
+
+function applySource(){
+  const t = $('cfgPaste').value.trim();
+  if (t){ const j = parseCfg(t); if (j) Object.assign(CFG, j); }
+  const u = $('imgUrl').value.trim(); if (u) CFG.image = u;
+  loadImg(CFG.image, false);
+}
+
+function loadImg(url, cors){
+  const im = new Image();
+  // lh3.googleusercontent.com supports CORS
+  if (cors || url.startsWith(location.origin) || url.includes('wsrv.nl') || url.includes('googleusercontent')) {
+      im.crossOrigin = 'anonymous';
+  }
+  im.onload = () => { IMG = im; layout(); $('err').style.display='none'; };
+  im.onerror = () => { showError('Image failed to load: ' + url); };
+  im.src = url;
+}
+
+/* ============ letterbox + warp ============ */
+function layout(){
+  const vw = innerWidth, vh = innerHeight;
+  bg.width = vw; bg.height = vh;
+  const ctx = bg.getContext('2d');
+  ctx.fillStyle = '#000'; ctx.fillRect(0,0,vw,vh);
+  if (IMG){
+    const s = Math.min(vw/IMG.width, vh/IMG.height);
+    view = { s, ox:(vw-IMG.width*s)/2, oy:(vh-IMG.height*s)/2 };
+    ctx.drawImage(IMG, view.ox, view.oy, IMG.width*s, IMG.height*s);
+  }
+  placeScreen();
+}
+function quadPts(){
+  if (!CFG || !CFG.corners) return null;
+  return CFG.corners.map(([x,y]) => [x*view.s+view.ox, y*view.s+view.oy]);
+}
+function placeScreen(){
+  const q = quadPts(); if (!q) return;
+  const d = (a,b)=>Math.hypot(q[b][0]-q[a][0], q[b][1]-q[a][1]);
+  const aw=(d(0,1)+d(3,2))/2, ah=(d(0,3)+d(1,2))/2, aspect=aw/ah;
+  const short = Math.max(480, Math.min(aw,ah));
+  const bw = aspect>=1 ? Math.round(short*aspect) : short;
+  const bh = aspect>=1 ? short : Math.round(short/aspect);
+  const H = homography([[0,0],[bw,0],[bw,bh],[0,bh]], q);
+  screen.style.width = bw+'px'; screen.style.height = bh+'px';
+  screen.style.transform = 'matrix3d('+[H[0],H[3],0,H[6], H[1],H[4],0,H[7], 0,0,1,0, H[2],H[5],0,1].join(',')+')';
+}
+function homography(src,dst){
+  const A=[],B=[];
+  for(let i=0;i<4;i++){const[x,y]=src[i],[X,Y]=dst[i];
+    A.push([x,y,1,0,0,0,-x*X,-y*X]);B.push(X);
+    A.push([0,0,0,x,y,1,-x*Y,-y*Y]);B.push(Y);}
+  const n=8,M=A.map((r,i)=>r.concat(B[i]));
+  for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(M[r][c])>Math.abs(M[p][c]))p=r;
+    [M[c],M[p]]=[M[p],M[c]];
+    for(let r=0;r<n;r++){if(r===c)continue;const f=M[r][c]/M[c][c];for(let k=c;k<=n;k++)M[r][k]-=f*M[c][k];}}
+  return M.map((r,i)=>r[n]/M[i][i]).concat(1);
+}
+
+/* ============ embed ============ */
+function loadEmbed(){
+  let t = $('embed').value.trim(), src = t;
+  if (/<iframe/i.test(t)){ const d=document.createElement('div'); d.innerHTML=t; const f=d.querySelector('iframe'); src=f?f.src:''; }
+  else if (/youtube\.com\/watch\?v=([^&]+)/.test(t)) src = 'https://www.youtube.com/embed/'+t.match(/youtube\.com\/watch\?v=([^&]+)/)[1];
+  if (src) game.src = src;
+}
+
+/* ============ filters ============ */
+function bind(id, fn){ const el=$(id); const h=()=>fn(parseFloat(el.value)); el.addEventListener('input',h); h(); }
+function posterize(L){
+  const els=document.querySelectorAll('#fct feFuncR,#fct feFuncG,#fct feFuncB');
+  if(L<2){ els.forEach(e=>e.setAttribute('type','identity')); }
+  else{ const t=[]; for(let i=0;i<L;i++) t.push((i/(L-1)).toFixed(3)); els.forEach(e=>{e.setAttribute('type','discrete');e.setAttribute('tableValues',t.join(' '));}); }
+  innerFilter();
+}
+function innerFilter(){
+  const L=+$('pos').value, s=+$('sat').value, c=+$('con').value;
+  $('pxInner').style.filter=(L>=2?'url(#post) ':'')+'saturate('+s+') contrast('+c+')';
+}
+bind('pix', v=>{ $('pxOuter').style.transform='scale('+v+')'; $('pxInner').style.transform='scale('+(1/v)+')'; $('vPix').textContent=v; });
+bind('noi', v=>{ $('noise').style.opacity=v; $('vNoi').textContent=v; });
+bind('pos', v=>{ $('vPos').textContent=v||'off'; posterize(v); });
+bind('sca', v=>{ $('scan').style.opacity=v; $('vSca').textContent=v; });
+bind('vig2',v=>{ $('vig').style.opacity=v; $('vVig').textContent=v; });
+bind('sat', v=>{ $('vSat').textContent=v; innerFilter(); });
+bind('con', v=>{ $('vCon').textContent=v; innerFilter(); });
+bind('scrOp',v=>{ screen.style.opacity=v; $('vScrOp').textContent=v; });
+$('blend').addEventListener('change',e=>screen.style.mixBlendMode=e.target.value);
+$('bEmbed').onclick=loadEmbed; $('bApplySrc').onclick=applySource; $('bRefresh').onclick=loadConfig;
+
+/* noise texture */
+(function(){ const c=document.createElement('canvas'); c.width=c.height=160; const x=c.getContext('2d');
+  const d=x.createImageData(160,160); for(let i=0;i<d.data.length;i+=4){const v=Math.random()*255|0;d.data[i]=d.data[i+1]=d.data[i+2]=v;d.data[i+3]=255;}
+  x.putImageData(d,0,0); $('noise').style.backgroundImage='url('+c.toDataURL()+')'; })();
+
+/* ============ ui ============ */
+let hideT=null;
+function wake(){ document.body.classList.add('uion'); clearTimeout(hideT);
+  hideT=setTimeout(()=>{ if(!$('panel').classList.contains('open')) document.body.classList.remove('uion'); },2500); }
+addEventListener('mousemove',wake); addEventListener('touchstart',wake); wake();
+$('bGear').onclick=()=>{ $('panel').classList.toggle('open'); wake(); };
+$('bPause').onclick=e=>{ const p=document.body.classList.toggle('paused'); e.target.textContent=p?'▶':'⏸'; };
+
+addEventListener('resize',layout);
+loadConfig();
+</script>
+</body>
+</html>
