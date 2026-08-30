@@ -48,7 +48,7 @@
   <textarea id="cfgPaste" placeholder='paste config.json or corners here (optional)'></textarea>
   <input type="text" id="imgUrl" placeholder="image url (default scene.png)">
   <button id="bApplySrc">apply source</button>
-  <button id="bRefresh">↻ refetch (api/config.json)</button>
+  <button id="bRefresh">↻ refetch (api)</button>
   <h3>screen / embed</h3>
   <textarea id="embed" placeholder="paste a link or <iframe> embed to stand in for the game"></textarea>
   <button id="bEmbed">load embed</button>
@@ -68,62 +68,38 @@
 <svg width="0" height="0"><filter id="post"><feComponentTransfer id="fct"><feFuncR type="identity"/><feFuncG type="identity"/><feFuncB type="identity"/></feComponentTransfer></filter></svg>
 <script>
 'use strict';
-/* ============ AUTO-FETCH: paste your Apps Script web app /exec URL here ============ */
 const API_URL = 'https://script.google.com/macros/s/AKfycbyccUlKZq6VU6MFKCHDSUvyZG4XwfVyNe3FDo3S18iV9ejvBU7S55KHTAOa-LCcXALs/exec';
 
-/* ============ state ============ */
 let CFG = null, IMG = null, view = {s:1,ox:0,oy:0};
 const $ = id => document.getElementById(id);
 const bg = $('bg'), screen = $('screen'), game = $('game');
 
 function showError(msg){ const e=$('err'); e.textContent=msg; e.style.display='block'; }
 
-/* ============ config ============ */
 function parseCfg(text){
   try { const j = JSON.parse(text); if (j.corners) return j; } catch(e){}
-  const m = text.match(/\[\s*\[[-\d.,\s\[\]]+\]\s*\]/);
-  if (m) try { return { corners: JSON.parse(m[0]) }; } catch(e){}
   return null;
 }
 
-async function loadRemote(){
-  if (!API_URL) return false;
-  // Check for file protocol
-  if (location.protocol === 'file:') {
-    showError("Cannot fetch API from local file. Please host on GitHub Pages or run a local server (python -m http.server).");
-    return false;
-  }
-  try {
-    // Fetch JSON config (includes the direct lh3 image link)
-    const r = await fetch(API_URL); 
-    const j = await r.json();
-    if (j.error) { showError("API Error: " + j.error); return false; }
-    if (!j.corners || !j.image) { showError("API returned invalid data."); return false; }
-    
-    CFG = j;
-    // Load image directly from Google's CDN (bypasses Apps Script CORS issues)
-    loadImg(CFG.image, true);
-    return true;
-  } catch(e){ 
-    showError("Fetch failed: " + e.message + ". Check console.");
-    return false; 
-  }
+// JSONP: injects a <script> tag, which bypasses CORS entirely
+window.handleConfig = function(data) {
+  if (data.error) { showError("API Error: " + data.error); return; }
+  if (!data.corners || !data.image) { showError("Invalid data from API"); return; }
+  CFG = data;
+  $('imgUrl').value = data.image;
+  loadImg(data.image, false);
+};
+
+function loadRemote(){
+  if (!API_URL) return;
+  const s = document.createElement('script');
+  s.src = API_URL + '?callback=handleConfig&_=' + Date.now();
+  s.onerror = () => showError('Script load failed');
+  document.body.appendChild(s);
 }
 
-async function loadConfig(){
-  if (await loadRemote()) return;
-  
-  // Fallback for local testing
-  if (location.protocol === 'file:') return; // Already showed error
-
-  try {
-    const r = await fetch('config.json'); 
-    if (r.ok) CFG = Object.assign({image:'scene.png'}, await r.json());
-  } catch(e){}
-  
-  if (!CFG) CFG = { image: 'scene.png' };
-  $('imgUrl').value = CFG.image || 'scene.png';
-  loadImg(CFG.image || 'scene.png', false);
+function loadConfig(){
+  loadRemote();
 }
 
 function applySource(){
@@ -135,16 +111,12 @@ function applySource(){
 
 function loadImg(url, cors){
   const im = new Image();
-  // lh3.googleusercontent.com supports CORS
-  if (cors || url.startsWith(location.origin) || url.includes('wsrv.nl') || url.includes('googleusercontent')) {
-      im.crossOrigin = 'anonymous';
-  }
+  if (cors) im.crossOrigin = 'anonymous';
   im.onload = () => { IMG = im; layout(); $('err').style.display='none'; };
-  im.onerror = () => { showError('Image failed to load: ' + url); };
+  im.onerror = () => { showError('Image failed: ' + url); };
   im.src = url;
 }
 
-/* ============ letterbox + warp ============ */
 function layout(){
   const vw = innerWidth, vh = innerHeight;
   bg.width = vw; bg.height = vh;
@@ -184,7 +156,6 @@ function homography(src,dst){
   return M.map((r,i)=>r[n]/M[i][i]).concat(1);
 }
 
-/* ============ embed ============ */
 function loadEmbed(){
   let t = $('embed').value.trim(), src = t;
   if (/<iframe/i.test(t)){ const d=document.createElement('div'); d.innerHTML=t; const f=d.querySelector('iframe'); src=f?f.src:''; }
@@ -192,7 +163,6 @@ function loadEmbed(){
   if (src) game.src = src;
 }
 
-/* ============ filters ============ */
 function bind(id, fn){ const el=$(id); const h=()=>fn(parseFloat(el.value)); el.addEventListener('input',h); h(); }
 function posterize(L){
   const els=document.querySelectorAll('#fct feFuncR,#fct feFuncG,#fct feFuncB');
@@ -215,12 +185,10 @@ bind('scrOp',v=>{ screen.style.opacity=v; $('vScrOp').textContent=v; });
 $('blend').addEventListener('change',e=>screen.style.mixBlendMode=e.target.value);
 $('bEmbed').onclick=loadEmbed; $('bApplySrc').onclick=applySource; $('bRefresh').onclick=loadConfig;
 
-/* noise texture */
 (function(){ const c=document.createElement('canvas'); c.width=c.height=160; const x=c.getContext('2d');
   const d=x.createImageData(160,160); for(let i=0;i<d.data.length;i+=4){const v=Math.random()*255|0;d.data[i]=d.data[i+1]=d.data[i+2]=v;d.data[i+3]=255;}
   x.putImageData(d,0,0); $('noise').style.backgroundImage='url('+c.toDataURL()+')'; })();
 
-/* ============ ui ============ */
 let hideT=null;
 function wake(){ document.body.classList.add('uion'); clearTimeout(hideT);
   hideT=setTimeout(()=>{ if(!$('panel').classList.contains('open')) document.body.classList.remove('uion'); },2500); }
