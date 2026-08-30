@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>the monolith</title>
-<!-- index.html v6: global filter chain, 3-layer vignettes, fixed pixelation, responsive games -->
+<!-- index.html v7: fixed initialization ordering bug -->
 <style>
 html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:none}
 body.uion{cursor:default}
@@ -75,6 +75,8 @@ const ROWS=[
  ['halo','halo',0,1,.05,.55], ['halo radius','haloR',0,200,5,85],
  ['inner vig','ivig',0,1,.05,.35], ['inner vig radius','ivigR',0,100,5,75]
 ];
+
+/* v7 fix: build all DOM elements first, then apply filters */
 const APPLY={
   scrOp:v=>screen.style.opacity=v,
   pix:v=>{PIX=v;layout();sendPix();},
@@ -87,16 +89,30 @@ const APPLY={
   halo:v=>halo.style.opacity=v, haloR:()=>setHalo(),
   ivig:v=>ivig.style.opacity=v, ivigR:()=>setIVig()
 };
+
+/* Step 1: Create all slider DOM elements */
 ROWS.forEach(([lab,id,mn,mx,st,df])=>{
   const l=document.createElement('label');
   l.innerHTML='<span>'+lab+'</span><input type="range" id="'+id+'" min="'+mn+'" max="'+mx+'" step="'+st+'" value="'+df+'"><input type="number" id="'+id+'N" min="'+mn+'" max="'+mx+'" step="'+st+'" value="'+df+'">';
   $('filters').appendChild(l);
-  const s=l.children[1], n=l.children[2];
+});
+
+/* Step 2: Bind event listeners and collect initial values */
+const initialValues = {};
+ROWS.forEach(([lab,id,mn,mx,st,df])=>{
+  const s=$(id), n=$(id+'N');
   const fire=v=>{const f=APPLY[id]; if(typeof f==='function') f(parseFloat(v));};
   s.addEventListener('input',()=>{n.value=s.value;fire(s.value);});
   n.addEventListener('input',()=>{s.value=n.value;fire(n.value);});
-  fire(df);
+  initialValues[id] = df;
 });
+
+/* Step 3: Apply all filters now that DOM exists */
+ROWS.forEach(([lab,id,mn,mx,st,df])=>{
+  const f=APPLY[id];
+  if(typeof f==='function') f(df);
+});
+
 function posterize(L){
   const els=document.querySelectorAll('#fct feFuncR,#fct feFuncG,#fct feFuncB');
   if(L<2){els.forEach(e=>e.setAttribute('type','identity'));}
