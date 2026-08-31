@@ -76,12 +76,13 @@ body.uion #ui{opacity:1;pointer-events:auto}
 <svg width="0" height="0" style="position:absolute"><filter id="post"><feComponentTransfer id="fct"><feFuncR type="identity"/><feFuncG type="identity"/><feFuncB type="identity"/></feComponentTransfer></filter></svg>
 <script>
 'use strict';
-console.log('monolith v20d — full-width adaptive HUD — '+new Date().toISOString());
+console.log('monolith v20e — '+new Date().toISOString()+' — API '+ 'AKfycbyccUlKZq6VU6MFKCHDSUvyZG4XwfVyNe3FDo3S18iV9ejvBU7S55KHTAOa-LCcXALs');
+console.log('[monolith] bootstrap', {href: location.href, userAgent: navigator.userAgent.slice(0,80)});
 const API_URL = 'https://script.google.com/macros/s/AKfycbyccUlKZq6VU6MFKCHDSUvyZG4XwfVyNe3FDo3S18iV9ejvBU7S55KHTAOa-LCcXALs/exec';
 let CFG=null, IMG=null, view={s:1,ox:0,oy:0}, PIX=1;
 const $=id=>document.getElementById(id);
 const bg=$('bg'), screen=$('screen'), game=$('game'), halo=$('halo'), ivig=$('ivig'), vig=$('vig'), noise=$('noise'), scan=$('scan');
-function showError(m){const e=$('err');e.textContent=m;e.style.display='block';}
+function showError(m){console.error('[monolith] showError',m); const e=$('err');e.textContent=m;e.style.display='block';}
 
 /* ---- filter rows: [label, id, min, max, step, default] — defaults from your screenshot ---- */
 const ROWS=[
@@ -154,11 +155,13 @@ $('noiAnim').addEventListener('change',e=>noise.classList.toggle('animated',e.ta
 
 /* ---- JSONP config + history ---- */
 window.handleConfig=function(d){
+  console.log('[monolith] handleConfig', d && (d.error ? {error:d.error} : {base:d.base, corners:d.corners && d.corners.length, image: d.image && d.image.slice(0,60)}));
   if(d.error){showError('API: '+d.error);return;}
-  if(!d.corners||!d.image){showError('Invalid API data');return;}
+  if(!d.corners||!d.image){showError('Invalid API data: '+JSON.stringify(d).slice(0,300)); console.warn('[monolith] invalid config', d);return;}
   CFG=d; loadImg(d.image);
 };
 window.handleHistory=function(list){
+  console.log('[monolith] handleHistory raw', Array.isArray(list) ? 'array len '+list.length : typeof list, list && (list.error || (list.base ? 'single-object' : Object.keys(list||{}).slice(0,4))));
   const sel=$('history');
   if(list && list.error){ showError('History: '+list.error); return; }
   // API bug: history returns single object not array — normalize
@@ -166,8 +169,9 @@ window.handleHistory=function(list){
     if(list && list.base && list.image) list=[list];
     else if(list && Array.isArray(list.history)) list=list.history;
     else if(list && typeof list==='object') list=Object.values(list).filter(v=>v && v.base);
-    else { showError('History: unexpected format'); return; }
+    else { showError('History: unexpected format '+JSON.stringify(list).slice(0,300)); console.warn('[monolith] unexpected history', list); return; }
   }
+  console.log('[monolith] handleHistory normalized len', list.length);
   sel.innerHTML='<option value="">Current (latest)</option>';
   list.forEach((it,i)=>{const o=document.createElement('option');o.value=String(i);o.textContent=(it.date?new Date(it.date).toLocaleDateString():(it.base||'item '+(i+1)));o.dataset.json=JSON.stringify(it);sel.appendChild(o);});
   if(!list.length){ const o=document.createElement('option');o.value='';o.textContent='(no history yet)';o.disabled=true;sel.appendChild(o); }
@@ -178,10 +182,10 @@ $('history').addEventListener('change',e=>{
   try{ CFG=JSON.parse(o.dataset.json); if(!CFG || !CFG.image){ showError('Invalid history entry'); return; } loadImg(CFG.image); }
   catch(err){ showError('History parse failed'); }
 });
-function loadConfig(){jsonp('?callback=handleConfig');}
-function loadHistory(){jsonp('?q=history&callback=handleHistory');}
-function jsonp(qs){const old=document.querySelector('script[data-jsonp]'); if(old) old.remove(); const s=document.createElement('script');s.dataset.jsonp='1';s.src=API_URL+qs+'&_='+Date.now();s.onerror=()=>showError('API unreachable');s.onload=()=>setTimeout(()=>s.remove(),3000);document.body.appendChild(s);}
-function loadImg(url){const im=new Image();im.onload=()=>{IMG=im;layout();$('err').style.display='none';};im.onerror=()=>showError('Image failed');im.src=url;}
+function loadConfig(){console.log('[monolith] loadConfig -> '+API_URL+'?callback=handleConfig'); jsonp('?callback=handleConfig');}
+function loadHistory(){console.log('[monolith] loadHistory -> ?q=history'); jsonp('?q=history&callback=handleHistory');}
+function jsonp(qs){console.log('[monolith] jsonp', API_URL+qs); const old=document.querySelector('script[data-jsonp]'); if(old) old.remove(); const s=document.createElement('script');s.dataset.jsonp='1';s.src=API_URL+qs+'&_='+Date.now();s.onerror=()=>{console.error('[monolith] jsonp error',qs); showError('API unreachable: '+qs);};s.onload=()=>{console.log('[monolith] jsonp loaded',qs); setTimeout(()=>s.remove(),3000);};document.body.appendChild(s);}
+function loadImg(url){console.log('[monolith] loadImg', url.slice(0,80)); const im=new Image();im.onload=()=>{console.log('[monolith] image loaded', im.width+'x'+im.height); IMG=im;layout();$('err').style.display='none';};im.onerror=()=>{console.error('[monolith] image failed',url.slice(0,80)); showError('Image failed');};im.src=url;}
 
 /* ---- layout / warp ---- */
 function layout(){
