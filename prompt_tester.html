@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Obelisk Prompt Tester</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;min-height:100%;background:#05070c;color:#c0d0e0;font-family:VT323,monospace}
+h1{font-family:'Press Start 2P';font-size:11px;color:#00e5ff;background:linear-gradient(90deg,#00e5ff,#0066ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:18px 16px 6px}
+.wrap{max-width:980px;margin:0 auto;padding:12px}
+.card{background:#080a12;border:3px ridge #2a4a5a;padding:12px;margin:10px 0;box-shadow:4px 4px 0 #000}
+label{font-size:13px;color:#88ccff;text-transform:uppercase;letter-spacing:.04em;display:block;margin:8px 0 4px}
+textarea,select,input{width:100%;background:#000;color:#a0d0ff;border:2px inset #2a4a5a;padding:7px;box-sizing:border-box;font:13px VT323,monospace}
+textarea{height:96px;resize:vertical}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:700px){.row{grid-template-columns:1fr}}
+button{font-family:'Press Start 2P';font-size:8px;background:#0a1420;color:#00e5ff;border:3px outset #2a4a5a;padding:10px 14px;cursor:pointer;box-shadow:3px 3px 0 #000}
+button:active{border-style:inset;transform:translate(1px,1px)}
+button:disabled{opacity:.4;cursor:not-allowed}
+img{max-width:100%;image-rendering:auto;border:2px solid #1a2a3a;background:#000}
+.log{white-space:pre-wrap;font:12px monospace;background:#000;border:2px inset #1a2a3a;padding:8px;min-height:48px;max-height:320px;overflow:auto}
+.small{font-size:11px;opacity:.7}
+.thumb{width:72px;height:72px;object-fit:cover;border:2px solid #1a2a3a;cursor:pointer}
+.thumb.sel{border-color:#00e5ff;box-shadow:0 0 8px #00e5ff}
+#thumbs{display:flex;flex-wrap:wrap;gap:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>OBELISK — PROMPT TESTER</h1>
+<div class="small" style="margin:0 0 10px 16px">Try prompts against real sources without re-deploying. Uses your deployed Web App (same exec as daily_tetris_CDI). Needs the Apps Script bootstrap (core.js) update pushed — then set PROMPT_OVERRIDE in Script Properties or pass prompt here.</div>
+
+<div class="card">
+ <div class="row">
+  <div>
+   <label>Web App URL (exec)</label>
+   <input id="api" placeholder="https://script.google.com/macros/s/.../exec">
+   <div class="small" id="apiHint">Paste the Web App URL (Deploy → Web App). Stored locally.</div>
+   <label>Source image (from Drive)</label>
+   <div id="thumbs" class="small">loading…</div>
+   <input id="src" placeholder="or type exact file name e.g. abc123.jpg">
+   <label>Or upload preview (no upload to Drive — preview only)</label>
+   <input id="file" type="file" accept="image/*">
+   <img id="preview" style="display:none;margin-top:8px">
+  </div>
+  <div>
+   <label>Prompt</label>
+   <textarea id="prompt">Match the lighting of the input image. Insert a black rectangular obsidian monolith with a screen on it into this landscape. The face toward the camera has exactly one flat perfectly rectangular screen, filling most of the face. The screen is a plain matte neutral mid-grey panel (sRGB 128,128,128). The obelisk should be weathered slightly. Do not alter the rest of the photo.</textarea>
+   <label>Quick presets</label>
+   <select id="presets"><option value="">— custom —</option>
+    <option value="Match the lighting. Insert a black obsidian monolith with exactly one flat matte mid-grey rectangle (sRGB 128,128,128) filling the face. Weathered.">v1 — concise</option>
+    <option value="Insert a black obsidian monolith with a perfectly rectangular matte neutral grey screen. The screen must be flat, opaque, sRGB 128,128,128, no reflections, filling 80% of the face. Match lighting, slight weathering.">v2 — opaque grey emphasis</option>
+    <option value="Place a monolith (black obsidian, rectangular, weathered edges) centered in the landscape. One face has a single flat mid-grey panel, rec601 luminance 128, saturation <10, no specular. Match original photo lighting.">v3 — detector-friendly</option>
+   </select>
+   <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+    <button id="gen">Generate via Apps Script</button>
+    <button id="savePrompt" title="Saves to ScriptProperties PROMPT_OVERRIDE via test+save trick">Save as PROMPT_OVERRIDE</button>
+    <button id="copy">Copy prompt</button>
+   </div>
+   <div class="small" style="margin-top:6px">Generate calls <code>?q=test&prompt=…&source=…</code> — runs through your normal pipeline (CF → Gemini fallback + detector). Check Apps Script logs for detection fill/sat.</div>
+  </div>
+ </div>
+</div>
+
+<div class="card">
+ <label>Result / log</label>
+ <div id="log" class="log">idle</div>
+ <img id="result" style="display:none;margin-top:10px">
+</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const API_KEY='obelisk_tester_api';
+const PROMPT_KEY='obelisk_tester_prompt';
+$('api').value=localStorage.getItem(API_KEY)||'';
+$('prompt').value=localStorage.getItem(PROMPT_KEY)||$('prompt').value;
+$('api').addEventListener('change',()=>localStorage.setItem(API_KEY,$('api').value.trim()));
+$('prompt').addEventListener('input',()=>localStorage.setItem(PROMPT_KEY,$('prompt').value));
+$('presets').addEventListener('change',()=>{ if($('presets').value){$('prompt').value=$('presets').value; localStorage.setItem(PROMPT_KEY,$('prompt').value);} });
+$('copy').onclick=()=>{ navigator.clipboard.writeText($('prompt').value); $('log').textContent='copied'; };
+$('file').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const url=URL.createObjectURL(f); $('preview').src=url; $('preview').style.display='block';
+});
+function apiBase(){ const v=$('api').value.trim(); if(!v) throw new Error('set Web App URL first'); return v.replace(/\/exec.*$/,'/exec'); }
+function jsonp(url, cb){
+  return new Promise((res,rej)=>{
+    const fn='cb_'+Math.random().toString(36).slice(2);
+    window[fn]=(d)=>{ res(d); delete window[fn]; s.remove(); };
+    const s=document.createElement('script'); s.src=url+(url.includes('?')?'&':'?')+'callback='+fn+'&_='+Date.now();
+    s.onerror=()=>rej(new Error('JSONP failed — check Web App deployment is Anyone with link')); document.body.appendChild(s);
+  });
+}
+async function loadSources(){
+  try{
+    const base=apiBase();
+    const d=await jsonp(base+'?q=sources');
+    if(!d.sources) throw new Error(d.error||'no sources');
+    const c=$('thumbs'); c.innerHTML='';
+    d.sources.forEach(s=>{
+      const im=document.createElement('img'); im.className='thumb'; im.src=s.thumb; im.title=s.name;
+      im.onclick=()=>{ $('src').value=s.name; document.querySelectorAll('.thumb').forEach(t=>t.classList.remove('sel')); im.classList.add('sel'); $('preview').src=s.thumb; $('preview').style.display='block'; };
+      c.appendChild(im);
+    });
+  }catch(e){ $('thumbs').textContent='sources: '+(e.message||e); }
+}
+$('api').addEventListener('change', loadSources);
+if($('api').value.trim()) loadSources();
+
+$('gen').onclick=async()=>{
+  const btn=$('gen'); btn.disabled=true; $('log').textContent='sending to Apps Script … (this runs the full pipeline, ~15-30s)\nCheck Apps Script → Executions for live logs.';
+  try{
+    const base=apiBase();
+    const pr=encodeURIComponent($('prompt').value);
+    const src=$('src').value.trim();
+    const url=base+'?q=test&prompt='+pr+(src?'&source='+encodeURIComponent(src):'');
+    const d=await jsonp(url);
+    $('log').textContent=JSON.stringify(d,null,2);
+    if(d.base){
+      // fetch the generated image via history or config
+      const h=await jsonp(base+'?q=history');
+      const hit=(h[0]&&h[0].base===d.base?h[0]: (h.find&&h.find(x=>x.base===d.base))||h[0]);
+      if(hit&&hit.image){ $('result').src=hit.image; $('result').style.display='block'; }
+    }
+  }catch(e){ $('log').textContent='error: '+(e.stack||e.message||e); }
+  finally{ btn.disabled=false; }
+};
+$('savePrompt').onclick=async()=>{
+  // Save prompt as ScriptProperties PROMPT_OVERRIDE by calling a tiny helper:
+  // We use generateWithPrompt trick: the Apps Script reads conf('PROMPT_OVERRIDE'), but we expose no setter via GET.
+  // Workaround: user sets it manually once, then this button just copies to clipboard with instructions.
+  $('log').textContent='To make this prompt the default for dailyRun/generateMissingDay without passing ?prompt:\nApps Script → Project Settings → Script Properties → add PROMPT_OVERRIDE = your prompt text.\n\nPrompt copied to clipboard — paste there.';
+  navigator.clipboard.writeText($('prompt').value);
+};
+</script>
+</body>
+</html>
