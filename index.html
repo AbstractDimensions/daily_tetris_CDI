@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>the monolith</title>
-<!-- index.html v9: robust history (single-object API) + DOM slider fix + tetris default -->
+<!-- index.html v20: CDI-90s panel — new flex+ctrl wrapper (all rows identical, no per-max sizing) -->
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
 <style>
 html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:none}
 body.uion{cursor:default}
@@ -20,19 +21,34 @@ body.uion{cursor:default}
 @keyframes nz{0%{background-position:0 0}50%{background-position:90px 40px}100%{background-position:-60px 80px}}
 #scan{mix-blend-mode:multiply;background:repeating-linear-gradient(0deg,#0000 0 2px,#0003 2px 3px)}
 #ui{position:fixed;top:12px;right:12px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:9}
-body.uion #ui{opacity:.55;pointer-events:auto}
-#ui button{font:16px/1 system-ui;color:#fff;background:#ffffff2e;border:1px solid #ffffff40;border-radius:8px;padding:8px 10px;backdrop-filter:blur(4px);cursor:pointer}
-#panel{position:fixed;top:52px;right:12px;width:280px;max-height:calc(100% - 70px);overflow:auto;background:#000000b8;border:1px solid #ffffff30;border-radius:10px;padding:12px;color:#ddd;font:12px system-ui;display:none;z-index:9;backdrop-filter:blur(6px)}
+body.uion #ui{opacity:1;pointer-events:auto}
+#ui button{font-family:'Press Start 2P',monospace;font-size:10px;color:#00e5ff;background:#0a1420;border:3px outset #2a4a5a;border-radius:0;padding:8px 12px;cursor:pointer;image-rendering:pixelated;box-shadow:3px 3px 0 #000;text-transform:uppercase;letter-spacing:0.05em}
+#ui button:active{border-style:inset;transform:translate(1px,1px);box-shadow:1px 1px 0 #000}
+#panel{position:fixed;top:52px;right:12px;width:340px;max-width:calc(100vw - 16px);max-height:calc(100% - 70px);overflow:auto;background:#080a12;border:4px ridge #2a4a5a;border-radius:0;padding:0;color:#c0d0e0;font-family:'VT323',monospace;font-size:13px;display:none;z-index:9;box-shadow:6px 6px 0 #000, inset 0 0 30px rgba(0,229,255,0.08);box-sizing:border-box;image-rendering:pixelated}
 #panel.open{display:block}
-#panel h3{margin:10px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#9ad}
-#panel label{display:flex;align-items:center;margin:4px 0;gap:6px;flex-wrap:nowrap;box-sizing:border-box}
-#panel label span{width:86px;flex:none}
-#panel input[type=range]{flex:1;min-width:0}
-#panel input[type=number]{width:52px;flex:none;background:#111;color:#ddd;border:1px solid #444;border-radius:4px}
-#panel select,#panel textarea{width:100%;background:#111;color:#ddd;border:1px solid #444;border-radius:6px;font:12px system-ui;box-sizing:border-box}
+#panel::-webkit-scrollbar{width:10px;background:#080a12}
+#panel::-webkit-scrollbar-thumb{background:#1a2a3a;border:2px outset #2a4a5a}
+#panel h3{margin:0;padding:7px 10px;font-family:'Press Start 2P',monospace;font-size:7px;text-transform:uppercase;letter-spacing:0.08em;color:#000;background:linear-gradient(90deg,#00e5ff 0%,#00aaff 50%,#0066ff 100%);border-bottom:3px solid #000;text-shadow:1px 1px 0 rgba(255,255,255,0.3)}
+/* NEW APPROACH — label flex + .ctrl wrapper so range+number are grouped. No grid, no per-row sizing */
+#panel label{display:flex;align-items:center;gap:8px;margin:0;padding:5px 8px;box-sizing:border-box;border-bottom:1px solid #141e2e;background:transparent;transition:background 0.1s}
+#panel label:hover{background:rgba(0,229,255,0.07)}
+#panel label span{flex:0 0 92px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'VT323',monospace;font-size:13px;color:#88ccff;text-transform:uppercase;letter-spacing:0.02em}
+#panel label .ctrl{flex:1 1 0;display:flex;align-items:center;gap:8px;min-width:0}
+#panel label .ctrl input[type=range]{flex:1 1 0;min-width:0;width:0;-webkit-appearance:none;appearance:none;height:14px;margin:0;background:#000;border:2px inset #2a4a5a;box-sizing:border-box;cursor:pointer}
+#panel label .ctrl input[type=number]{flex:0 0 62px;width:62px;min-width:0;margin:0;background:#000;color:#00e5ff;border:2px inset #2a4a5a;border-radius:0;padding:3px 4px;font-family:'VT323',monospace;font-size:14px;text-align:center;box-sizing:border-box;box-shadow:inset 1px 1px 3px #000}
+#panel input[type=range]::-webkit-slider-runnable-track{height:10px;background:linear-gradient(90deg,#001122,#002244)}
+#panel input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;margin-top:-2px;background:#00e5ff;border:2px outset #a0f0ff;box-shadow:1px 1px 0 #000;cursor:pointer}
+#panel input[type=range]::-moz-range-thumb{width:14px;height:14px;background:#00e5ff;border:2px outset #a0f0ff;box-shadow:1px 1px 0 #000;cursor:pointer;border-radius:0}
+#panel input[type=number]:focus{outline:none;border-color:#00e5ff;box-shadow:0 0 6px rgba(0,229,255,0.4), inset 1px 1px 3px #000}
+#panel select,#panel textarea{width:100%;background:#000;color:#a0d0ff;border:2px inset #2a4a5a;border-radius:0;padding:5px 6px;font-family:'VT323',monospace;font-size:13px;box-sizing:border-box}
+#panel select:focus,#panel textarea:focus{outline:none;border-color:#00e5ff}
 #panel textarea{height:52px;resize:vertical}
-#panel button{background:#234;color:#cde;border:1px solid #456;border-radius:6px;padding:5px 10px;cursor:pointer;margin-top:4px}
-#err{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:#f55;font:14px monospace;text-align:center;display:none;z-index:99;background:#000a;padding:20px;border:1px solid #f55}
+#panel button{background:#1a2a4a;color:#00e5ff;border:3px outset #2a4a6a;border-radius:0;padding:6px 12px;cursor:pointer;font-family:'Press Start 2P',monospace;font-size:7px;text-transform:uppercase;letter-spacing:0.05em;box-shadow:2px 2px 0 #000;image-rendering:pixelated}
+#panel button:active{border-style:inset;transform:translate(1px,1px);box-shadow:1px 1px 0 #000}
+#panel #history{margin:6px 8px;width:calc(100% - 16px)}
+#panel #preset, #panel #embed, #panel #blend{margin:4px 8px;width:calc(100% - 16px)}
+#panel #bEmbed{margin:4px 8px 8px}
+#err{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:#ff0040;font-family:'Press Start 2P',monospace;font-size:8px;text-align:center;display:none;z-index:99;background:#000;padding:16px;border:4px ridge #ff0040;box-shadow:4px 4px 0 #000}
 </style>
 </head>
 <body>
@@ -46,6 +62,7 @@ body.uion #ui{opacity:.55;pointer-events:auto}
 <div id="ui"><button id="bGear">⚙</button></div>
 <div id="panel">
   <h3>image</h3>
+  <div style="font-family:'Press Start 2P',monospace;font-size:7px;opacity:.7;padding:4px 8px;color:#00e5ff">v20d — full-width adaptive HUD</div>
   <select id="history"><option value="">Current (latest)</option></select>
   <h3>screen / embed</h3>
   <select id="preset"><option value="">Custom embed</option><option value="tetris">Tetris</option><option value="pong">Pong</option><option value="breaker">Brick Breaker</option></select>
@@ -59,6 +76,7 @@ body.uion #ui{opacity:.55;pointer-events:auto}
 <svg width="0" height="0" style="position:absolute"><filter id="post"><feComponentTransfer id="fct"><feFuncR type="identity"/><feFuncG type="identity"/><feFuncB type="identity"/></feComponentTransfer></filter></svg>
 <script>
 'use strict';
+console.log('monolith v20d — full-width adaptive HUD — '+new Date().toISOString());
 const API_URL = 'https://script.google.com/macros/s/AKfycbyccUlKZq6VU6MFKCHDSUvyZG4XwfVyNe3FDo3S18iV9ejvBU7S55KHTAOa-LCcXALs/exec';
 let CFG=null, IMG=null, view={s:1,ox:0,oy:0}, PIX=1;
 const $=id=>document.getElementById(id);
@@ -67,13 +85,13 @@ function showError(m){const e=$('err');e.textContent=m;e.style.display='block';}
 
 /* ---- filter rows: [label, id, min, max, step, default] — defaults from your screenshot ---- */
 const ROWS=[
- ['opacity','scrOp',0,1,.05,.9], ['pixelate','pix',1,8,1,1], ['noise','noi',0,.5,.02,.1],
+ ['opacity','scrOp',0,1,.05,.5], ['pixelate','pix',1,8,1,1], ['noise','noi',0,.5,.02,.1],
  ['posterize','pos',0,64,1,0], ['scanlines','sca',0,1,.05,.65], ['blur','blur',0,10,.5,0],
  ['brightness','bright',0,2,.05,1], ['grayscale','gray',0,1,.05,0], ['sepia','sepia',0,1,.05,0],
  ['hue-rotate','hue',0,360,5,0], ['invert','inv',0,1,.05,0], ['saturation','sat',0,2,.05,2],
  ['contrast','con',.5,1.6,.05,.95], ['vignette','vig2',0,1,.05,.5], ['vig radius','vigR',50,150,5,100],
- ['halo','halo',0,1,.05,.55], ['halo radius','haloR',0,200,5,85],
- ['inner vig','ivig',0,1,.05,.35], ['inner vig radius','ivigR',0,100,5,75]
+ ['halo','halo',0,1,.05,.55], ['halo R','haloR',0,200,5,85],
+ ['inner vig','ivig',0,1,.05,.35], ['ivig R','ivigR',0,100,5,75]
 ];
 
 /* v7 fix: build all DOM elements first, then apply filters */
@@ -94,8 +112,10 @@ const APPLY={
 ROWS.forEach(([lab,id,mn,mx,st,df])=>{
   const l=document.createElement('label');
   const sp=document.createElement('span'); sp.textContent=lab; l.appendChild(sp);
-  const r=document.createElement('input'); r.type='range'; r.id=id; r.min=mn; r.max=mx; r.step=st; r.value=df; l.appendChild(r);
-  const n=document.createElement('input'); n.type='number'; n.id=id+'N'; n.min=mn; n.max=mx; n.step=st; n.value=df; l.appendChild(n);
+  const ctrl=document.createElement('div'); ctrl.className='ctrl';
+  const r=document.createElement('input'); r.type='range'; r.id=id; r.min=mn; r.max=mx; r.step=st; r.value=df; ctrl.appendChild(r);
+  const n=document.createElement('input'); n.type='number'; n.id=id+'N'; n.min=mn; n.max=mx; n.step=st; n.value=df; ctrl.appendChild(n);
+  l.appendChild(ctrl);
   $('filters').appendChild(l);
 });
 
@@ -200,7 +220,7 @@ function homography(src,dst){
   return M.map((r,i)=>r[n]/M[i][i]).concat(1);
 }
 
-/* ---- games (responsive, pixel-message aware) ---- */
+/* ---- games (responsive, pixel-message aware) — v20d: full-width adaptive type (readable at 160-640px) ---- */
 const GAMES={
 tetris:`<!DOCTYPE html><html><head><style>html,body{margin:0;height:100%;background:#04060c;overflow:hidden}canvas{width:100%;height:100%;display:block;image-rendering:pixelated}</style></head><body><canvas id=c></canvas><script>
 var c=document.getElementById('c'),x=c.getContext('2d'),PIX=1;
@@ -218,13 +238,14 @@ for(var y2=ROWS-1;y2>=0;y2--){var full=true;for(var q2=0;q2<COLS;q2++)if(!B[y2][
 addEventListener('keydown',function(e){if(over){reset();return;}
 if(e.key=='ArrowLeft'&&ok(-1,0,P))px--;else if(e.key=='ArrowRight'&&ok(1,0,P))px++;else if(e.key=='ArrowDown'&&ok(0,1,P))py++;else if(e.key=='ArrowUp')rot();else if(e.key==' '){while(ok(0,1,P))py++;lock();}});
 setInterval(function(){if(!over){if(ok(0,1,P))py++;else lock();}draw();},450);
+function fitText(labels,W,H){var best=null;for(var k=0;k<labels.length;k++){var lab=labels[k];var lo=8,hi=Math.min(Math.floor(W*0.18),Math.floor(H*0.09),48),fs=hi;x.font=fs+'px monospace';while(fs>lo&&x.measureText(lab).width>W*0.92){fs--;x.font=fs+'px monospace';}if(x.measureText(lab).width<=W*0.92){if(fs>=10) return [lab,fs]; if(!best||fs>best[1]) best=[lab,fs];}}return best||[labels[labels.length-1],Math.max(8,Math.min(W*0.09,H*0.06))|0];}
 function draw(){var W=c.width,H=c.height;x.fillStyle='#04060c';x.fillRect(0,0,W,H);
-var cell=Math.floor(Math.min(W*0.6/COLS,H*0.94/ROWS)),bw=cell*COLS,bh=cell*ROWS,ox=(W-bw)/2|0,oy=(H-bh)/2|0;
+var cell=Math.floor(Math.min(W*0.6/COLS,H*0.88/ROWS)),bw=cell*COLS,bh=cell*ROWS,ox=(W-bw)/2|0,oy=(H-bh)/2|0;
 x.strokeStyle='#2a3346';x.strokeRect(ox-1,oy-1,bw+2,bh+2);
 for(var y=0;y<ROWS;y++)for(var q=0;q<COLS;q++)if(B[y][q]){x.fillStyle=CO[B[y][q]-1];x.fillRect(ox+q*cell,oy+y*cell,cell-1,cell-1);}
 if(!over)for(var y3=0;y3<P.length;y3++)for(var q3=0;q3<P[y3].length;q3++)if(P[y3][q3]){x.fillStyle=CO[pi];x.fillRect(ox+(px+q3)*cell,oy+(py+y3)*cell,cell-1,cell-1);}
-x.fillStyle='#8fa';x.font=Math.max(6,H*0.04)+'px monospace';x.fillText('SCORE '+score+'  LINES '+lines,ox,Math.max(8,oy-4));
-if(over){x.fillStyle='#fff';x.font=Math.max(8,H*0.05)+'px monospace';x.fillText('GAME OVER',ox+bw*0.2,oy+bh/2);x.fillText('press any key',ox+bw*0.15,oy+bh/2+H*0.06);}}
+var r=fitText(['SCORE '+score+'  LINES '+lines,'S'+score+' L'+lines,score+'|'+lines,String(score)],W,H);x.fillStyle='#8fa';x.font=r[1]+'px monospace';x.textAlign='center';x.fillText(r[0],W/2,Math.max(r[1]+4,oy-6));x.textAlign='left';
+if(over){var t=fitText(['GAME OVER'],W,H);x.fillStyle='#fff';x.textAlign='center';x.font=t[1]+'px monospace';x.fillText(t[0],W/2,H/2);var s=fitText(['press any key','tap to restart'],W,H);x.font=Math.max(8,Math.min(s[1],t[1]-4))+'px monospace';x.fillText(s[0],W/2,H/2+H*0.08);x.textAlign='left';}}
 fit();reset();
 <\/script></body></html>`,
 pong:`<!DOCTYPE html><html><head><style>html,body{margin:0;height:100%;background:#04060c;overflow:hidden}canvas{width:100%;height:100%;display:block;image-rendering:pixelated}</style></head><body><canvas id=c></canvas><script>
@@ -232,23 +253,29 @@ var c=document.getElementById('c'),x=c.getContext('2d'),PIX=1;
 function fit(){c.width=Math.max(64,innerWidth/PIX);c.height=Math.max(64,innerHeight/PIX);}
 addEventListener('resize',fit);
 addEventListener('message',function(e){if(e.data&&e.data.t=='pix'){PIX=e.data.v;fit();}});
-var py=.5,ay=.5,bx=.5,by=.5,vx=.007,vy=.004,ps=0,as=0;
+var py=.5,ay=.5,bx=.5,by=.5,vx=.007,vy=.004,ps=0,as=0,over=false,WIN=5;
+function reset(){ps=0;as=0;bx=.5;by=.5;vx=.007;vy=.004;over=false;}
 addEventListener('mousemove',function(e){py=Math.min(1,Math.max(0,e.clientY/innerHeight));});
 addEventListener('touchmove',function(e){py=Math.min(1,Math.max(0,e.touches[0].clientY/innerHeight));e.preventDefault();},{passive:false});
-function loop(){requestAnimationFrame(loop);var PH=.18;
+addEventListener('keydown',function(e){if(over)reset();});
+addEventListener('click',function(){if(over)reset();});
+addEventListener('touchstart',function(){if(over)reset();});
+function fitText(labels,W,H){var best=null;for(var k=0;k<labels.length;k++){var lab=labels[k];var lo=8,hi=Math.min(Math.floor(W*0.22),Math.floor(H*0.13),52),fs=hi;x.font=fs+'px monospace';while(fs>lo&&x.measureText(lab).width>W*0.90){fs--;x.font=fs+'px monospace';}if(x.measureText(lab).width<=W*0.90){if(fs>=10) return [lab,fs]; if(!best||fs>best[1]) best=[lab,fs];}}return best||[labels[labels.length-1],Math.max(10,Math.min(W*0.12,H*0.08))|0];}
+function loop(){requestAnimationFrame(loop);if(!over){var PH=.18;
 bx+=vx;by+=vy;
 if((by<.02&&vy<0)||(by>.98&&vy>0))vy=-vy;
 if(bx<.06&&bx>.02&&Math.abs(by-py)<PH/2+.02&&vx<0)vx=-vx*1.06;
 if(bx>.94&&bx<.98&&Math.abs(by-ay)<PH/2+.02&&vx>0)vx=-vx*1.06;
-if(bx<-.02){as++;bx=.5;by=.5;vx=.007;}
-if(bx>1.02){ps++;bx=.5;by=.5;vx=-.007;}
-ay+=Math.max(-.006,Math.min(.006,(by-ay)*.08));
+if(bx<-.02){as++;if(as>=WIN)over=true;bx=.5;by=.5;vx=.007;vy=(Math.random()-.5)*.008;}
+if(bx>1.02){ps++;if(ps>=WIN)over=true;bx=.5;by=.5;vx=-.007;vy=(Math.random()-.5)*.008;}
+ay+=Math.max(-.006,Math.min(.006,(by-ay)*.08));}
 var W=c.width,H=c.height;
 x.fillStyle='#04060c';x.fillRect(0,0,W,H);
 x.strokeStyle='#223';x.setLineDash([4,6]);x.beginPath();x.moveTo(W/2,0);x.lineTo(W/2,H);x.stroke();x.setLineDash([]);
-x.fillStyle='#9cf';x.font=Math.max(8,H*.07)+'px monospace';x.fillText(ps+'   '+as,W*.42,H*.09);
-x.fillStyle='#fff';x.fillRect(W*.03,H*(py-PH/2),W*.015,H*PH);x.fillRect(W*.955,H*(ay-PH/2),W*.015,H*PH);
-x.beginPath();x.arc(W*bx,H*by,Math.max(2,Math.min(W,H)*.015),0,7);x.fill();}
+var r=fitText([ps+' : '+as,ps+':'+as],W,H);x.fillStyle='#9cf';x.font=r[1]+'px monospace';x.textAlign='center';x.fillText(r[0],W/2,H*0.14);x.textAlign='left';
+x.fillStyle='#fff';x.fillRect(W*.03,H*(py-.09),W*.015,H*.18);x.fillRect(W*.955,H*(ay-.09),W*.015,H*.18);
+x.beginPath();x.arc(W*bx,H*by,Math.max(2,Math.min(W,H)*.015),0,7);x.fill();
+if(over){x.fillStyle='rgba(4,6,12,0.85)';x.fillRect(0,0,W,H);var t=fitText([ps>=WIN?'YOU WIN':'YOU LOSE'],W,H);x.fillStyle=ps>=WIN?'#0f8':'#f55';x.textAlign='center';x.font=t[1]+'px monospace';x.fillText(t[0],W/2,H/2-H*0.04);var s=fitText(['first to '+WIN+' — tap to restart','tap to restart'],W,H);x.fillStyle='#fff';x.font=Math.max(8,Math.min(s[1],t[1]-4))+'px monospace';x.fillText(s[0],W/2,H/2+H*0.06);x.textAlign='left';}}
 fit();loop();
 <\/script></body></html>`,
 breaker:`<!DOCTYPE html><html><head><style>html,body{margin:0;height:100%;background:#04060c;overflow:hidden}canvas{width:100%;height:100%;display:block;image-rendering:pixelated}</style></head><body><canvas id=c></canvas><script>
@@ -256,28 +283,32 @@ var c=document.getElementById('c'),x=c.getContext('2d'),PIX=1;
 function fit(){c.width=Math.max(64,innerWidth/PIX);c.height=Math.max(64,innerHeight/PIX);}
 addEventListener('resize',fit);
 addEventListener('message',function(e){if(e.data&&e.data.t=='pix'){PIX=e.data.v;fit();}});
-var px=.5,bx=.5,by=.75,vx=.005,vy=-.005,lives=3,score=0,level=1,bricks=[],RC=['#f66','#fb6','#ff6','#6f6','#6cf'];
+var px=.5,bx=.5,by=.75,vx=.005,vy=-.005,lives=3,score=0,level=1,over=false,bricks=[],RC=['#f66','#fb6','#ff6','#6f6','#6cf'];
 function make(){bricks=[];for(var r=0;r<5;r++)for(var q=0;q<10;q++)bricks.push({x:q*.096+.02,y:.1+r*.055,w:.088,h:.04,a:true});}
 make();
 addEventListener('mousemove',function(e){px=Math.min(1,Math.max(0,e.clientX/innerWidth));});
 addEventListener('touchmove',function(e){px=Math.min(1,Math.max(0,e.touches[0].clientX/innerWidth));e.preventDefault();},{passive:false});
+addEventListener('keydown',function(e){if(over){lives=3;score=0;level=1;over=false;make();bx=.5;by=.75;vx=.005;vy=-.005;}});
+addEventListener('click',function(){if(over){lives=3;score=0;level=1;over=false;make();bx=.5;by=.75;vx=.005;vy=-.005;}});
+function fitText(labels,W,H){var best=null;for(var k=0;k<labels.length;k++){var lab=labels[k];var lo=8,hi=Math.min(Math.floor(W*0.18),Math.floor(H*0.09),36),fs=hi;x.font=fs+'px monospace';while(fs>lo&&x.measureText(lab).width>W*0.92){fs--;x.font=fs+'px monospace';}if(x.measureText(lab).width<=W*0.92){if(fs>=10) return [lab,fs]; if(!best||fs>best[1]) best=[lab,fs];}}return best||[labels[labels.length-1],Math.max(8,Math.min(W*0.09,H*0.06))|0];}
 function loop(){requestAnimationFrame(loop);
-bx+=vx;by+=vy;
+if(!over){bx+=vx;by+=vy;
 if(bx<.012||bx>.988)vx=-vx;
 if(by<.012)vy=-vy;
 var PW=.18;
 if(vy>0&&by>.9&&by<.96&&Math.abs(bx-px)<PW/2){vy=-Math.abs(vy)*1.03;vx+=(bx-px)*.03;}
-if(by>1.02){lives--;bx=.5;by=.75;vx=.005;vy=-.005;if(lives<0){lives=3;score=0;level=1;make();}}
+if(by>1.02){lives--;score=Math.max(0,score-25);bx=.5;by=.75;vx=.005*(Math.random()>.5?1:-1);vy=-.005;if(lives<=0)over=true;}
 var alive=0;
 for(var i=0;i<bricks.length;i++){var b=bricks[i];if(!b.a)continue;alive++;
 if(bx>b.x-.008&&bx<b.x+b.w+.008&&by>b.y&&by<b.y+b.h){b.a=false;vy=-vy;score+=10;break;}}
-if(alive===0){level++;make();vy*=1.08;}
+if(alive===0){level++;make();vy*=1.08;score+=50;}}
 var W=c.width,H=c.height;
 x.fillStyle='#04060c';x.fillRect(0,0,W,H);
 for(var i2=0;i2<bricks.length;i2++){var b2=bricks[i2];if(b2.a){x.fillStyle=RC[(i2/10|0)%5];x.fillRect(b2.x*W,b2.y*H,b2.w*W,b2.h*H);}}
 x.fillStyle='#fff';x.fillRect((px-PW/2)*W,H*.95,PW*W,H*.02);
 x.beginPath();x.arc(bx*W,by*H,Math.max(2,Math.min(W,H)*.012),0,7);x.fill();
-x.fillStyle='#9cf';x.font=Math.max(8,H*.045)+'px monospace';x.fillText('SCORE '+score+'  LIVES '+lives+'  LV '+level,8,H*.05);}
+var r=fitText(['SCORE '+score+'  LIVES '+lives+'  LV '+level,score+' L'+lives+' Lv'+level,score+'|'+lives+'|'+level,String(score)],W,H);x.fillStyle='#9cf';x.font=r[1]+'px monospace';x.textAlign='center';x.fillText(r[0],W/2,Math.max(r[1]+4,H*0.06));x.textAlign='left';
+if(over){x.fillStyle='rgba(4,6,12,0.85)';x.fillRect(0,0,W,H);var t=fitText(['GAME OVER'],W,H);x.fillStyle='#f55';x.textAlign='center';x.font=t[1]+'px monospace';x.fillText(t[0],W/2,H/2-H*0.04);var s=fitText(['score '+score+' — tap to restart','tap to restart'],W,H);x.fillStyle='#fff';x.font=Math.max(8,Math.min(s[1],t[1]-4))+'px monospace';x.fillText(s[0],W/2,H/2+H*0.06);x.textAlign='left';}}
 fit();loop();
 <\/script></body></html>`};
 $('preset').addEventListener('change',e=>{if(GAMES[e.target.value])game.srcdoc=GAMES[e.target.value];});
