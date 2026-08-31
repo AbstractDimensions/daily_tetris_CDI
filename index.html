@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>the monolith</title>
-<!-- index.html v8: history picker + slider layout + tetris default -->
+<!-- index.html v9: robust history (single-object API) + DOM slider fix + tetris default -->
 <style>
 html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:none}
 body.uion{cursor:default}
@@ -90,10 +90,12 @@ const APPLY={
   ivig:v=>ivig.style.opacity=v, ivigR:()=>setIVig()
 };
 
-/* Step 1: Create all slider DOM elements */
+/* Step 1: Create all slider DOM elements — use DOM API so 2 random sliders don't lose text via innerHTML */
 ROWS.forEach(([lab,id,mn,mx,st,df])=>{
   const l=document.createElement('label');
-  l.innerHTML='<span>'+lab+'</span><input type="range" id="'+id+'" min="'+mn+'" max="'+mx+'" step="'+st+'" value="'+df+'"><input type="number" id="'+id+'N" min="'+mn+'" max="'+mx+'" step="'+st+'" value="'+df+'">';
+  const sp=document.createElement('span'); sp.textContent=lab; l.appendChild(sp);
+  const r=document.createElement('input'); r.type='range'; r.id=id; r.min=mn; r.max=mx; r.step=st; r.value=df; l.appendChild(r);
+  const n=document.createElement('input'); n.type='number'; n.id=id+'N'; n.min=mn; n.max=mx; n.step=st; n.value=df; l.appendChild(n);
   $('filters').appendChild(l);
 });
 
@@ -138,9 +140,16 @@ window.handleConfig=function(d){
 };
 window.handleHistory=function(list){
   const sel=$('history');
-  if(!Array.isArray(list)){ if(list && list.error) showError('History: '+list.error); return; }
+  if(list && list.error){ showError('History: '+list.error); return; }
+  // API bug: history returns single object not array — normalize
+  if(!Array.isArray(list)){
+    if(list && list.base && list.image) list=[list];
+    else if(list && Array.isArray(list.history)) list=list.history;
+    else if(list && typeof list==='object') list=Object.values(list).filter(v=>v && v.base);
+    else { showError('History: unexpected format'); return; }
+  }
   sel.innerHTML='<option value="">Current (latest)</option>';
-  list.forEach((it,i)=>{const o=document.createElement('option');o.value=String(i);o.textContent=new Date(it.date).toLocaleDateString();o.dataset.json=JSON.stringify(it);sel.appendChild(o);});
+  list.forEach((it,i)=>{const o=document.createElement('option');o.value=String(i);o.textContent=(it.date?new Date(it.date).toLocaleDateString():(it.base||'item '+(i+1)));o.dataset.json=JSON.stringify(it);sel.appendChild(o);});
   if(!list.length){ const o=document.createElement('option');o.value='';o.textContent='(no history yet)';o.disabled=true;sel.appendChild(o); }
 };
 $('history').addEventListener('change',e=>{
