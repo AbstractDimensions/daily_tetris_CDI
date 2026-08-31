@@ -84,15 +84,15 @@ const $=id=>document.getElementById(id);
 const bg=$('bg'), screen=$('screen'), game=$('game'), halo=$('halo'), ivig=$('ivig'), vig=$('vig'), noise=$('noise'), scan=$('scan');
 function showError(m){console.error('[monolith] showError',m); const e=$('err');e.textContent=m;e.style.display='block';}
 
-/* ---- filter rows: [label, id, min, max, step, default] — defaults from your screenshot ---- */
+/* ---- filter rows: [label, id, min, max, step, default] — defaults from screenshot 2026-08-31 ---- */
 const ROWS=[
  ['opacity','scrOp',0,1,.05,.5], ['pixelate','pix',1,8,1,1], ['noise','noi',0,.5,.02,.1],
- ['posterize','pos',0,64,1,0], ['scanlines','sca',0,1,.05,.65], ['blur','blur',0,10,.5,0],
- ['brightness','bright',0,2,.05,1], ['grayscale','gray',0,1,.05,0], ['sepia','sepia',0,1,.05,0],
+ ['posterize','pos',0,64,1,0], ['scanlines','sca',0,1,.05,.45], ['blur','blur',0,10,.5,0.5],
+ ['brightness','bright',0,2,.05,1], ['grayscale','gray',0,1,.05,0], ['sepia','sepia',0,1,.05,0.2],
  ['hue-rotate','hue',0,360,5,0], ['invert','inv',0,1,.05,0], ['saturation','sat',0,2,.05,2],
- ['contrast','con',.5,1.6,.05,.95], ['vignette','vig2',0,1,.05,.5], ['vig radius','vigR',50,150,5,100],
- ['halo','halo',0,1,.05,.55], ['halo R','haloR',0,200,5,85],
- ['inner vig','ivig',0,1,.05,.35], ['ivig R','ivigR',0,100,5,75]
+ ['contrast','con',.5,1.6,.05,1], ['vignette','vig2',0,1,.05,0.4], ['vig radius','vigR',50,150,5,105],
+ ['halo','halo',-1,1,.05,-0.5], ['halo R','haloR',0,200,5,35],
+ ['inner vig','ivig',0,1,.05,0], ['ivig R','ivigR',0,100,5,75]
 ];
 
 /* v7 fix: build all DOM elements first, then apply filters */
@@ -318,17 +318,19 @@ fit();loop();
 $('preset').addEventListener('change',e=>{if(GAMES[e.target.value])game.srcdoc=GAMES[e.target.value];});
 function sendPix(){try{if(game.contentWindow)game.contentWindow.postMessage({t:'pix',v:PIX},'*');}catch(e){}}
 game.addEventListener('load',sendPix);
-// default tetris
-$('preset').value='tetris'; game.srcdoc=GAMES['tetris'];
+// default: Brick Breaker + youtube embed from screenshot 2026-08-31
+$('preset').value='breaker'; game.srcdoc=GAMES['breaker'];
+$('embed').value='https://youtu.be/Z4SXUkRg2M?si=vZtESEqpDRLMBgsI';
+$('blend').value='overlay'; screen.style.mixBlendMode='overlay';
 function loadEmbed(){
   let t=$('embed').value.trim(),src=t;
   if(/<iframe/i.test(t)){const d=document.createElement('div');d.innerHTML=t;const f=d.querySelector('iframe');src=f?f.src:'';}
   else if(/youtube\.com\/watch\?v=([^&]+)/.test(t))src='https://www.youtube.com/embed/'+t.match(/youtube\.com\/watch\?v=([^&]+)/)[1];
+  else if(/youtu\.be\/([^?&]+)/.test(t))src='https://www.youtube.com/embed/'+t.match(/youtu\.be\/([^?&]+)/)[1];
   if(src)game.src=src;
 }
 $('bEmbed').onclick=loadEmbed;
 $('blend').addEventListener('change',e=>screen.style.mixBlendMode=e.target.value);
-screen.style.mixBlendMode='overlay';
 
 /* noise texture */
 (function(){const c=document.createElement('canvas');c.width=c.height=160;const x=c.getContext('2d');
