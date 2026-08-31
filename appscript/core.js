@@ -1,11 +1,8 @@
-// ============ Code.gs v11 ============
+// ============ Code.gs v12 CF-only (Gemini/Pexels removed) ============
 // v11: hull+edge-fit, Rec601 lum, minLum 70→45 fixes dark bevel, dual 8vs14 strict-biased, 508px, 30-round — 0.85px on real_user3
 const CF_ACCOUNT_ID = '';
 const CF_API_TOKEN  = '';
-const PEXELS_API_KEY = '';
-const GEMINI_API_KEY = '';
 const FOLDERS = { SOURCE:'obelisk_source', GEN:'obelisk_generated', FAIL:'obelisk_failed', REF:'obelisk_reference' };
-const MODEL_FALLBACKS = ['gemini-2.5-flash-image', 'gemini-3-pro-image-preview'];
 const CF_MODELS = ['@cf/black-forest-labs/flux-2-klein-4b'];
 const PROMPT_MAIN = `Match the lighting of the input image. Insert a black rectangular obsidian monolith with a screen on it into this landscape. The face toward the camera has exactly one flat perfectly rectangular screen, filling most of the face. The screen is a plain matte neutral mid-grey panel (sRGB 128,128,128). The obelisk should be weathered slightly. Do not alter the rest of the photo.`;
 const PROMPT_FIX = `This image failed automated validation. PROBLEM: {issue}\nEdit the image to fix this. There must be exactly one flat, matte, mid-grey rectangle on the obelisk face and no other grey areas on the obsidian. Keep everything else identical.`;
@@ -20,7 +17,6 @@ const MAX_RETRIES = 30;
 
 // ============ Helpers ============
 function conf_(k, fb) { return PropertiesService.getScriptProperties().getProperty(k) || fb || ''; }
-function getKey_() { return conf_('GEMINI_API_KEY', GEMINI_API_KEY); }
 function setup() { Object.values(FOLDERS).forEach(n => { if (!DriveApp.getFoldersByName(n).hasNext()) DriveApp.createFolder(n); }); }
 function installTriggers() { ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t)); ScriptApp.newTrigger('dailyRun').timeBased().everyDays(1).atHour(6).create(); }
 function dailyRun() { runPipeline(); }
@@ -113,84 +109,37 @@ function normalizedSourceBlob_(file) {
 }
 function generateImage_(prompt, blob, mime, includeRef) {
   const cfAcc = conf_('CF_ACCOUNT_ID', CF_ACCOUNT_ID), cfTok = conf_('CF_API_TOKEN', CF_API_TOKEN);
-  if (cfAcc && cfTok) {
-    try {
-      const small = resizeBlob_(blob, 508);
-      Logger.log('trying ' + CF_MODELS[0] + ' (640x480)');
-      return callWorkersAI_(cfAcc, cfTok, CF_MODELS[0], prompt, small.blob, 640, 480);
-    } catch(e){
-      Logger.log('Workers AI failed, falling back to Gemini: ' + e);
-    }
-  } else if(cfAcc || cfTok){
-    Logger.log('CF creds incomplete (acc='+(cfAcc?'set':'empty')+' tok='+(cfTok?'set':'empty')+'), using Gemini');
-  }
-  const key = getKey_();
-  if (key) {
-    const parts = [{ text: prompt }, { inline_data: { mime_type: mime, data: Utilities.base64Encode(blob.getBytes()) } }];
-    if (includeRef) {
-      const refs = files_(folder_(FOLDERS.REF));
-      if (refs.length) { const rb = refs[0].getBlob(); parts.push({ inline_data: { mime_type: rb.getContentType(), data: Utilities.base64Encode(rb.getBytes()) } }); }
-    }
-    return callGemini_(parts, key);
-  }
-  throw new Error('No image engine available (set CF_API_TOKEN or GEMINI_API_KEY in Script Properties)');
+  if (!cfAcc || !cfTok) throw new Error('Set CF_ACCOUNT_ID and CF_API_TOKEN in Script Properties (Project Settings → Script Properties)');
+  const small = resizeBlob_(blob, 508);
+  Logger.log('trying ' + CF_MODELS[0] + ' (640x480) multipart');
+  return callWorkersAI_(cfAcc, cfTok, CF_MODELS[0], prompt, small.blob, 640, 480);
 }
 function callWorkersAI_(acc, tok, model, prompt, imageBlob, outW, outH) {
+  // Workers AI flux-2-klein-4b expects multipart/form-data, NOT JSON.
+  // UrlFetchApp sends multipart automatically when payload contains a Blob.
   const url = 'https://api.cloudflare.com/client/v4/accounts/' + acc + '/ai/run/' + model;
-  const payload = JSON.stringify({ prompt: prompt, image: Utilities.base64Encode(imageBlob.getBytes()), width: outW, height: outH, num_steps: 20 });
-  const res = UrlFetchApp.fetch(url, { method:'post', headers:{ Authorization:'Bearer '+tok, 'Content-Type':'application/json' }, payload: payload, muteHttpExceptions:true });
+  const payload = {
+    prompt: prompt,
+    image: imageBlob, // key is `image` for this model (not input_image_0)
+    width: String(outW),
+    height: String(outH),
+    num_steps: '20'
+  };
+  const res = UrlFetchApp.fetch(url, { method:'post', headers:{ Authorization:'Bearer '+tok }, payload: payload, muteHttpExceptions:true });
   const txt = res.getContentText();
-  let j; try{ j=JSON.parse(txt);}catch(e){ throw new Error('workersai non-JSON '+res.getResponseCode()+': '+txt.slice(0,400)); }
+  let j; try{ j=JSON.parse(txt);}catch(e){ throw new Error('workersai non-JSON '+res.getResponseCode()+': '+txt.slice(0,800)); }
   if (res.getResponseCode()!==200 || !j.success) {
-    const msg = (j.errors && j.errors[0] && j.errors[0].message) || txt.slice(0,600);
-    throw new Error('workersai HTTP '+res.getResponseCode()+' '+msg);
+    const msg = (j.errors && j.errors[0] && j.errors[0].message) || txt.slice(0,800);
+    throw new Error('workersai HTTP '+res.getResponseCode()+' '+msg + ' | body: '+txt.slice(0,600));
   }
-  if (!j.result || !j.result.image) throw new Error('workersai HTTP '+res.getResponseCode()+' no image in result');
+  if (!j.result || !j.result.image) throw new Error('workersai HTTP '+res.getResponseCode()+' no image in result: '+txt.slice(0,600));
   return j.result.image;
-}
-function modelCandidates_() {
-  const cache = CacheService.getScriptCache(); const cached = cache.get('MODEL_CANDS');
-  if (cached) return JSON.parse(cached);
-  let cands = [];
-  try {
-    const key = getKey_(); const names = []; let token = '';
-    do {
-      const res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100' + (token ? '&pageToken=' + token : '') + '&key=' + key, { muteHttpExceptions: true });
-      if (res.getResponseCode() !== 200) break;
-      const j = JSON.parse(res.getContentText());
-      (j.models || []).forEach(m => names.push(m.name.replace('models/', '')));
-      token = j.nextPageToken || '';
-    } while (token);
-    cands = names.filter(n => /^gemini-/.test(n) && /image/.test(n));
-    cands.sort((a, b) => { const ra = rankModel_(a), rb = rankModel_(b); for (let i = 0; i < 3; i++) if (ra[i] !== rb[i]) return rb[i] - ra[i]; return 0; });
-  } catch (e) { Logger.log('model list fetch failed: ' + e); }
-  if (!cands.length) cands = MODEL_FALLBACKS.slice();
-  cache.put('MODEL_CANDS', JSON.stringify(cands), 21600);
-  return cands;
-}
-function rankModel_(n) { const v = n.match(/gemini-(\d+(?:\.\d+)?)/); return [v ? parseFloat(v[1]) : 0, /pro/.test(n) ? 1 : 0, /preview|exp/.test(n) ? 0 : 1]; }
-function callGemini_(parts, key) {
-  const cands = modelCandidates_(); let lastErr = 'no models';
-  for (const model of cands) {
-    const res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key, { method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify({ contents: [{ parts }] }) });
-    const code = res.getResponseCode(), txt = res.getContentText();
-    if (code === 200) {
-      const ps = (JSON.parse(txt).candidates[0].content.parts) || [];
-      for (const p of ps) if (p.inlineData) return p.inlineData.data;
-      lastErr = model + ': no image'; continue;
-    }
-    lastErr = model + ' HTTP ' + code;
-    if (code === 400 || code === 401) throw new Error(lastErr);
-  }
-  throw new Error('all models failed; last: ' + lastErr);
 }
 function pickSource_() {
   const gen = new Set(files_(folder_(FOLDERS.GEN)).filter(f => f.getName().endsWith('.png')).map(f => base_(f.getName())));
   let fresh = files_(folder_(FOLDERS.SOURCE)).filter(f => !gen.has(base_(f.getName())));
   if (!fresh.length) { fetchReddit_(); fresh = files_(folder_(FOLDERS.SOURCE)).filter(f => !gen.has(base_(f.getName()))); }
-  const pex = conf_('PEXELS_API_KEY', PEXELS_API_KEY);
-  if (!fresh.length && pex) { fetchPexels_(pex); fresh = files_(folder_(FOLDERS.SOURCE)).filter(f => !gen.has(base_(f.getName()))); }
-  if (!fresh.length) throw new Error('no fresh source images');
+  if (!fresh.length) throw new Error('no fresh source images (add to obelisk_source)');
   return fresh[0];
 }
 function fetchReddit_() {
@@ -209,21 +158,7 @@ function fetchReddit_() {
     folder_(FOLDERS.SOURCE).createFile(r.getBlob().setName(name)); added++;
   }
 }
-function fetchPexels_(key) {
-  const res = UrlFetchApp.fetch('https://api.pexels.com/v1/search?query=landscape+nature&per_page=' + LIMITS.fetchBatch, { headers: { 'Authorization': key }, muteHttpExceptions: true });
-  if (res.getResponseCode() !== 200) return;
-  const j = JSON.parse(res.getContentText());
-  const have = new Set(files_(folder_(FOLDERS.SOURCE)).map(f => f.getName()));
-  let added = 0;
-  for (const p of j.photos) {
-    if (added >= LIMITS.fetchBatch) break;
-    const name = 'pexels_' + p.id + '.jpeg';
-    if (have.has(name)) continue;
-    const r = UrlFetchApp.fetch(p.src.original, { muteHttpExceptions: true });
-    if (r.getResponseCode() !== 200) continue;
-    folder_(FOLDERS.SOURCE).createFile(r.getBlob().setName(name)); added++;
-  }
-}
+function fetchPexels_(key) { throw new Error('Pexels removed — CF-only'); }
 function runPipeline(promptOverride) {
   clearFolder_(folder_(FOLDERS.FAIL));
   return runPipelineForSource_(pickSource_(), promptOverride || getPrompt_());
